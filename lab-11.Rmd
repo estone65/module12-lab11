@@ -1,7 +1,7 @@
 ---
 title: "Lab 11 - Smoking during pregnancy"
-author: "Insert your name here"
-date: "Insert date here"
+author: "Eric Stone"
+date: "4.11.24"
 output: github_document
 ---
 
