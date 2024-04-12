@@ -261,3 +261,160 @@ ncbirths_clean <- ncbirths %>%
 ```
 
 Done. There were no missing values for weight.
+
+### Exercise 7
+
+> Calculate the observed difference in means between the baby weights of
+> smoking and non-smoking mothers.
+
+``` r
+ncbirths_clean %>%
+  group_by(habit) %>%
+  summarise(mean_weight = mean(weight))
+```
+
+    ## # A tibble: 2 × 2
+    ##   habit     mean_weight
+    ##   <fct>           <dbl>
+    ## 1 nonsmoker        7.14
+    ## 2 smoker           6.83
+
+### Exercise 8
+
+> Write the hypotheses for testing if the average weights of babies born
+> to smoking and non-smoking mothers are different.
+
+> H0: \_\_\_\_\_\_\_\_\_ (μ1=μ2)
+>
+> HA: \_\_\_\_\_\_\_\_\_ (μ1≠μ2)
+
+H0: μNS = μS HA: μNS ≠ μS
+
+### Exercise 9
+
+> Run the appropriate hypothesis test, calculate the p-value, and
+> interpret the results in context of the data and the hypothesis test.
+
+``` r
+test_result <- t.test(weight ~ habit, data = ncbirths_clean, alternative = "two.sided")
+print(test_result)
+```
+
+    ## 
+    ##  Welch Two Sample t-test
+    ## 
+    ## data:  weight by habit
+    ## t = 2.359, df = 171.32, p-value = 0.01945
+    ## alternative hypothesis: true difference in means between group nonsmoker and group smoker is not equal to 0
+    ## 95 percent confidence interval:
+    ##  0.05151165 0.57957328
+    ## sample estimates:
+    ## mean in group nonsmoker    mean in group smoker 
+    ##                7.144273                6.828730
+
+So there is a significant difference, with babies of smokers weighing
+less than babies of non-smokers, p = .02.
+
+I’m thinking, however, given the topic of this lab, that you want me to
+do this via boostrapping. I’ll see if i can figure that out.
+
+``` r
+bootstrap_means <- function(data_subset, reps) {
+  data_subset %>%
+    specify(response = weight) %>%
+    generate(reps = reps, type = "bootstrap") %>%
+    calculate(stat = "mean")
+}
+boot_clean <- ncbirths_clean %>%
+  split(.$habit) %>%
+  map_dfr(~bootstrap_means(.x, 1500), .id = "habit") %>%
+  mutate(replication = rep(1:1500, times = length(unique(ncbirths_clean$habit)))) %>%
+  pivot_wider(names_from = habit, values_from = stat, names_prefix = "stat_")
+```
+
+I definitely needed help from chat with the above. But I have ended with
+1500 replications, with the means for non-smokers and smokers calculated
+for each. To make sure this is working correctly:
+
+``` r
+boot_clean %>%
+  summarize(mean(stat_nonsmoker),mean(stat_smoker))
+```
+
+    ## # A tibble: 1 × 2
+    ##   `mean(stat_nonsmoker)` `mean(stat_smoker)`
+    ##                    <dbl>               <dbl>
+    ## 1                   7.14                6.83
+
+Yes, this seems to be working properly. Next I’ll adjust the mean
+difference to get the H0 distribution, like I did previously
+
+``` r
+boot_clean_h0 <- boot_clean %>%
+  mutate(mean_diff = (stat_nonsmoker - stat_smoker - 7.144273 + 6.828730)) 
+#checking to make sure I did the math right above
+boot_clean_h0 %>%
+   summarize(mean(mean_diff))
+```
+
+    ## # A tibble: 1 × 1
+    ##   `mean(mean_diff)`
+    ##               <dbl>
+    ## 1          -0.00636
+
+``` r
+#calculating the p-value
+boot_clean_h0_p <- boot_clean_h0 %>%
+  mutate (sig = (abs(mean_diff) >= ((7.144273 - 6.828730)))) 
+boot_clean_h0_p %>% summarise(percent_true = mean(sig)) 
+```
+
+    ## # A tibble: 1 × 1
+    ##   percent_true
+    ##          <dbl>
+    ## 1        0.016
+
+That was tough. I ended up with a p-value of .015, which is quite close
+to the actual p-value of .019.
+
+### Exercise 10
+
+> Construct a 95% confidence interval for the difference between the
+> average weights of babies born to smoking and non-smoking mothers.
+
+I have this mostly set up already with the boot_clean data frame.
+
+``` r
+boot_clean_h1 <- boot_clean %>%
+  mutate(mean_diff_actual = (stat_nonsmoker - stat_smoker))
+boot_clean_h1 %>%
+  summarize(lower = quantile(mean_diff_actual, 0.025),
+            upper = quantile(mean_diff_actual, 0.975))
+```
+
+    ## # A tibble: 1 × 2
+    ##    lower upper
+    ##    <dbl> <dbl>
+    ## 1 0.0625 0.581
+
+``` r
+boot_clean_h1 %>%
+  summarize(lower = quantile(mean_diff_actual, 0.005),
+            upper = quantile(mean_diff_actual, 0.995))
+```
+
+    ## # A tibble: 1 × 2
+    ##      lower upper
+    ##      <dbl> <dbl>
+    ## 1 -0.00238 0.653
+
+So the 95% CI is between .069 and .576.
+
+Note that the 99% CI includes 0, which is consistent with the previous
+results.
+
+### Exercise 11
+
+> First, a non-inference task: Determine the age cutoff for younger and
+> mature mothers. Use a method of your choice, and explain how your
+> method works.

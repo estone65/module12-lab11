@@ -249,3 +249,13 @@ Note that the 99% CI includes 0, which is consistent with the previous results.
 
 
 
+
+### Exercise 11
+
+> First, a non-inference task: Determine the age cutoff for younger and mature mothers. Use a method of your choice, and explain how your method works.
+
+
+
+
+
+
