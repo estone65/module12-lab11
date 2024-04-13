@@ -1,7 +1,7 @@
 Lab 11 - Smoking during pregnancy
 ================
 Eric Stone
-4.11.24
+4.13.24
 
 ### Load packages and data
 
@@ -418,3 +418,146 @@ results.
 > First, a non-inference task: Determine the age cutoff for younger and
 > mature mothers. Use a method of your choice, and explain how your
 > method works.
+
+I sorted by mage (mother’s age), and saw that all mothers of age 34 or
+younger were classified as “younger mom” and all mothers of age 35 or
+older were classifed as “mature mom.”
+
+### Exercise 12
+
+> Conduct a hypothesis test evaluating whether the proportion of low
+> birth weight babies is higher for mature mothers.
+
+> Use α=0.05.
+
+:(
+
+> State the hypotheses Verify the conditions Run the test and calculate
+> the p-value State your conclusion within context of the research
+> question
+
+H0: the proportion of low birth weight babies is equivalent for younger
+and mature mothers H1: the proportion of low birth weight babies is
+greater for mature mothers than for younger mothers
+
+So yikes, Chisquare or Fisher’s exact test. I’ll run a chi-square. With
+some help from chat…
+
+``` r
+contingency_table <- ncbirths_clean %>%
+  count(mature, lowbirthweight) %>%
+  pivot_wider(names_from = lowbirthweight, values_from = n, values_fill = list(n = 0))
+percent_low_birthweight <- contingency_table %>%
+  mutate(total = `not low` + low) %>% 
+  mutate(percent_low = (low / total) * 100) %>%
+  select(mature, percent_low) 
+print(percent_low_birthweight)
+```
+
+    ## # A tibble: 2 × 2
+    ##   mature      percent_low
+    ##   <fct>             <dbl>
+    ## 1 mature mom         12.9
+    ## 2 younger mom        10.7
+
+``` r
+chi_square_test <- chisq.test(as.matrix(contingency_table[, -1]))
+```
+
+So, 12.88% of mature moms give birth to a low birthweight child, and
+10.73% of younger moms gave birth to a low birthweight child. Thus the
+proportion is a little greater for mature moms, but it’s really close.
+The chi-square test produces a p-value of .56. That test isn’t
+directional, but it’s not close to significant either way.
+
+Again, though, you may want this to be done via bootstrapping.
+
+With some help from chat…
+
+``` r
+calculate_percentages <- function(data) {
+  summary_table <- data %>%
+    group_by(mature) %>%
+    summarise(
+      percent_low = mean(lowbirthweight == "low") * 100,
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(names_from = mature, values_from = percent_low)
+  
+  return(summary_table)
+}
+bootstrap_results <- map_dfr(1:1500, ~ {
+  sample_data <- ncbirths_clean[sample(nrow(ncbirths_clean), replace = TRUE), ]
+  calculate_percentages(sample_data)
+}, .id = "replication")
+```
+
+Now I think I can just use the approach that I used before.
+
+``` r
+boot_clean_mature_sample <- bootstrap_results %>%
+  mutate(mean_diff_low = `mature mom` - `younger mom`)
+boot_clean_mature_h0 <- bootstrap_results %>%
+  mutate(mean_diff_low_h0 = `mature mom` - `younger mom`- 12.87879 + 10.72664)
+#checking to make sure I did the math right above
+boot_clean_mature_sample %>%
+   summarize(mean(mean_diff_low))
+```
+
+    ## # A tibble: 1 × 1
+    ##   `mean(mean_diff_low)`
+    ##                   <dbl>
+    ## 1                  2.01
+
+``` r
+boot_clean_mature_h0 %>%
+   summarize(mean(mean_diff_low_h0))
+```
+
+    ## # A tibble: 1 × 1
+    ##   `mean(mean_diff_low_h0)`
+    ##                      <dbl>
+    ## 1                   -0.144
+
+``` r
+#calculating the p-value
+boot_clean_mature_p <- boot_clean_mature_h0 %>%
+   mutate (sig_mature = ((mean_diff_low_h0) >= ((12.87879 - 10.72664)))) 
+boot_clean_mature_p %>% summarise(percent_true = mean(sig_mature)) 
+```
+
+    ## # A tibble: 1 × 1
+    ##   percent_true
+    ##          <dbl>
+    ## 1        0.225
+
+So, by this analysis, p = .24. Note this was a directional test, whereas
+the chi-square was non-directional, so this p-value should be smaller.
+It’s not precisely half of the chi-square p-value, but it’s close.
+Either way, there isn’t evidence to suggest that mature moms give birth
+to lower weight children than do younger mothers.
+
+### Exercise 13
+
+> Calculate a confidence interval for the difference between the
+> proportions of low birth weight babies between mature and younger
+> mothers. Interpret the interval in the context of the data and explain
+> what it means.
+
+I have pretty much all I need for this from the last question.
+
+``` r
+boot_clean_mature_sample %>%
+  summarize(lower = quantile(mean_diff_low, 0.025),
+            upper = quantile(mean_diff_low, 0.975))
+```
+
+    ## # A tibble: 1 × 2
+    ##   lower upper
+    ##   <dbl> <dbl>
+    ## 1 -3.86  8.41
+
+So the confidence interval for the difference in percentages is
+\[-3.51,8.66\]. “No difference” is clearly included in the interval, so
+again we conclude there isn’t evidence to suggest that mature moms give
+birth to lower weight children than do younger mothers.
